@@ -1,0 +1,1606 @@
+import React, { useState, useEffect, useRef, useMemo } from 'react';
+import { 
+  Moon, Sun, Play, Pause, Square, RotateCcw, Plus, Trash2, Check, 
+  Clock, Calendar, BookOpen, CheckSquare, BarChart3, Settings, 
+  LogOut, Bell, Volume2, VolumeX, Download, Upload, Shield, Award, 
+  TrendingUp, Sparkles, AlertCircle, ChevronRight, Filter, Edit3, 
+  ChevronLeft, Layers, User, Zap, RefreshCw, Smartphone, PieChart
+} from 'lucide-react';
+
+const DEFAULT_SUBJECTS = [
+  { id: 'subj-1', name: 'Physics', color: '#6366f1', icon: '⚡' },
+  { id: 'subj-2', name: 'Chemistry', color: '#ec4899', icon: '🧪' },
+  { id: 'subj-3', name: 'Mathematics', color: '#3b82f6', icon: '📐' },
+  { id: 'subj-4', name: 'Biology', color: '#10b981', icon: '🌿' },
+  { id: 'subj-5', name: 'English', color: '#f59e0b', icon: '📖' },
+  { id: 'subj-6', name: 'ICT', color: '#06b6d4', icon: '💻' },
+  { id: 'subj-7', name: 'General / Other', color: '#8b5cf6', icon: '📌' },
+];
+
+const DEFAULT_USER = {
+  name: 'Shahu Student',
+  email: 'shahu.nightowl@study.edu',
+  dailyGoalHours: 5,
+  weeklyGoalHours: 30,
+  monthlyGoalHours: 120,
+  timeFormat: '12h',
+  timerSound: true,
+  soundType: 'chime', // chime, bell, harp
+  soundVolume: 0.8,
+  browserNotifications: false
+};
+
+class AudioSynthesizer {
+  constructor() {
+    this.ctx = null;
+  }
+
+  init() {
+    if (!this.ctx) {
+      const AudioCtx = window.AudioContext || window.webkitAudioContext;
+      if (AudioCtx) {
+        this.ctx = new AudioCtx();
+      }
+    }
+    if (this.ctx && this.ctx.state === 'suspended') {
+      this.ctx.resume();
+    }
+  }
+
+  playChime(type = 'chime', volume = 0.8) {
+    try {
+      this.init();
+      if (!this.ctx) return;
+
+      const now = this.ctx.currentTime;
+      const masterGain = this.ctx.createGain();
+      masterGain.gain.value = Math.max(0, Math.min(1, volume));
+      masterGain.connect(this.ctx.destination);
+
+      if (type === 'bell') {
+        // Deep peaceful bell sound
+        const osc = this.ctx.createOscillator();
+        const gain = this.ctx.createGain();
+        osc.type = 'sine';
+        osc.frequency.setValueAtTime(440, now); // A4
+        gain.gain.setValueAtTime(0.5, now);
+        gain.gain.exponentialRampToValueAtTime(0.001, now + 2.5);
+        osc.connect(gain);
+        gain.connect(masterGain);
+        osc.start(now);
+        osc.stop(now + 2.5);
+      } else if (type === 'harp') {
+        // Multi-note arpeggio chord
+        const notes = [523.25, 659.25, 783.99, 1046.50]; // C5, E5, G5, C6
+        notes.forEach((freq, index) => {
+          const osc = this.ctx.createOscillator();
+          const gain = this.ctx.createGain();
+          const noteTime = now + index * 0.12;
+          osc.type = 'triangle';
+          osc.frequency.setValueAtTime(freq, noteTime);
+          gain.gain.setValueAtTime(0.3, noteTime);
+          gain.gain.exponentialRampToValueAtTime(0.001, noteTime + 1.2);
+          osc.connect(gain);
+          gain.connect(masterGain);
+          osc.start(noteTime);
+          osc.stop(noteTime + 1.2);
+        });
+      } else {
+        // Default Classic Chime (Crystal clear dual chime)
+        const freqs = [587.33, 880]; // D5, A5
+        freqs.forEach((freq, idx) => {
+          const osc = this.ctx.createOscillator();
+          const gain = this.ctx.createGain();
+          const noteTime = now + idx * 0.15;
+          osc.type = 'sine';
+          osc.frequency.setValueAtTime(freq, noteTime);
+          gain.gain.setValueAtTime(0.4, noteTime);
+          gain.gain.exponentialRampToValueAtTime(0.001, noteTime + 1.5);
+          osc.connect(gain);
+          gain.connect(masterGain);
+          osc.start(noteTime);
+          osc.stop(noteTime + 1.5);
+        });
+      }
+    } catch (e) {
+      console.warn("Audio Context playback failed", e);
+    }
+  }
+}
+
+const audioSynth = new AudioSynthesizer();
+
+export default function App() {
+  // Navigation State
+  const [activeTab, setActiveTab] = useState('dashboard');
+
+  // Persistence Initializers
+  const [user, setUser] = useState(() => {
+    const saved = localStorage.getItem('nightowl_user');
+    return saved ? JSON.parse(saved) : DEFAULT_USER;
+  });
+
+  const [subjects, setSubjects] = useState(() => {
+    const saved = localStorage.getItem('nightowl_subjects');
+    return saved ? JSON.parse(saved) : DEFAULT_SUBJECTS;
+  });
+
+  const [sessions, setSessions] = useState(() => {
+    const saved = localStorage.getItem('nightowl_sessions');
+    if (saved) return JSON.parse(saved);
+    // Initial sample session if empty
+    const now = new Date();
+    return [
+      {
+        id: 'sess-init-1',
+        subjectId: 'subj-1',
+        subjectName: 'Physics',
+        startTime: new Date(now.getTime() - 7200000).toISOString(),
+        endTime: new Date(now.getTime() - 3600000).toISOString(),
+        durationMinutes: 60,
+        type: 'Stopwatch',
+        note: 'Quantum Mechanics revision',
+        dateStr: now.toISOString().split('T')[0]
+      }
+    ];
+  });
+
+  const [tasks, setTasks] = useState(() => {
+    const saved = localStorage.getItem('nightowl_tasks');
+    if (saved) return JSON.parse(saved);
+    const today = new Date().toISOString().split('T')[0];
+    return [
+      { id: 't-1', name: 'Solve Physics Mechanics problems', subjectId: 'subj-1', priority: 'High', completed: false, dueDate: today },
+      { id: 't-2', name: 'Revise Organic Chemistry reactions', subjectId: 'subj-2', priority: 'Medium', completed: true, dueDate: today },
+      { id: 't-3', name: 'Practice Calculus integration', subjectId: 'subj-3', priority: 'High', completed: false, dueDate: today },
+    ];
+  });
+
+  // Local Time & Clock State
+  const [currentTime, setCurrentTime] = useState(new Date());
+
+  // Active Timer / Stopwatch State
+  const [selectedSubjectId, setSelectedSubjectId] = useState(subjects[0]?.id || '');
+  const [sessionNote, setSessionNote] = useState('');
+  
+  // Active Timer mode: 'stopwatch' | 'timer'
+  const [studyMode, setStudyMode] = useState('stopwatch');
+  
+  // Stopwatch states (Timestamp-backed to prevent drift/sleep issues)
+  const [isSwRunning, setIsSwRunning] = useState(false);
+  const [swStartTime, setSwStartTime] = useState(null);
+  const [swAccumulatedMs, setSwAccumulatedMs] = useState(0);
+  const [swDisplaySeconds, setSwDisplaySeconds] = useState(0);
+
+  // Countdown Timer states
+  const [timerPresetMins, setTimerPresetMins] = useState(25);
+  const [customTimerMins, setCustomTimerMins] = useState('');
+  const [isTimerRunning, setIsTimerRunning] = useState(false);
+  const [timerEndTimestamp, setTimerEndTimestamp] = useState(null);
+  const [timerRemainingSecs, setTimerRemainingSecs] = useState(25 * 60);
+  const [timerTotalSecs, setTimerTotalSecs] = useState(25 * 60);
+
+  // Completion Modal State
+  const [completionModal, setCompletionModal] = useState({ open: false, summary: null });
+
+  // Save Modal State for Stopwatch
+  const [saveModal, setSaveModal] = useState({ open: false, durationSecs: 0 });
+
+  // Audio permission enabled badge
+  const [audioEnabled, setAudioEnabled] = useState(false);
+
+  // New Subject Form Modal
+  const [newSubjModal, setNewSubjModal] = useState(false);
+  const [newSubjForm, setNewSubjForm] = useState({ name: '', color: '#6366f1', icon: '📖' });
+
+  // New Task Form State
+  const [newTaskModal, setNewTaskModal] = useState(false);
+  const [newTaskForm, setNewTaskForm] = useState({ name: '', subjectId: subjects[0]?.id || '', priority: 'Medium', dueDate: new Date().toISOString().split('T')[0] });
+
+  // Filtering States for History/Reports/Tasks
+  const [historyFilterDate, setHistoryFilterDate] = useState('All');
+  const [historyFilterSubject, setHistoryFilterSubject] = useState('All');
+  const [taskFilterStatus, setTaskFilterStatus] = useState('All');
+  const [selectedCalendarDate, setSelectedCalendarDate] = useState(new Date().toISOString().split('T')[0]);
+
+  useEffect(() => {
+    localStorage.setItem('nightowl_user', JSON.stringify(user));
+  }, [user]);
+
+  useEffect(() => {
+    localStorage.setItem('nightowl_subjects', JSON.stringify(subjects));
+  }, [subjects]);
+
+  useEffect(() => {
+    localStorage.setItem('nightowl_sessions', JSON.stringify(sessions));
+  }, [sessions]);
+
+  useEffect(() => {
+    localStorage.setItem('nightowl_tasks', JSON.stringify(tasks));
+  }, [tasks]);
+
+  useEffect(() => {
+    const timer = setInterval(() => setCurrentTime(new Date()), 1000);
+    return () => clearInterval(timer);
+  }, []);
+
+  useEffect(() => {
+    let interval = null;
+    if (isSwRunning) {
+      interval = setInterval(() => {
+        const now = Date.now();
+        const delta = now - swStartTime;
+        const totalMs = swAccumulatedMs + delta;
+        setSwDisplaySeconds(Math.floor(totalMs / 1000));
+      }, 200);
+    }
+    return () => clearInterval(interval);
+  }, [isSwRunning, swStartTime, swAccumulatedMs]);
+
+  useEffect(() => {
+    let interval = null;
+    if (isTimerRunning) {
+      interval = setInterval(() => {
+        const now = Date.now();
+        const remaining = Math.max(0, Math.ceil((timerEndTimestamp - now) / 1000));
+        setTimerRemainingSecs(remaining);
+
+        if (remaining <= 0) {
+          setIsTimerRunning(false);
+          // Play sound if enabled
+          if (user.timerSound) {
+            audioSynth.playChime(user.soundType, user.soundVolume);
+          }
+          // Browser notification check
+          if (user.browserNotifications && 'Notification' in window && Notification.permission === 'granted') {
+            new Notification('Night Owl Study Tracker 🌙', {
+              body: 'Your study session timer has completed! Great job.',
+              icon: 'https://cdn-icons-png.flaticon.com/512/3237/3237472.png'
+            });
+          }
+
+          // Trigger Completion Modal
+          const targetSubj = subjects.find(s => s.id === selectedSubjectId) || subjects[0];
+          const durationMins = Math.max(1, Math.round(timerTotalSecs / 60));
+          
+          setCompletionModal({
+            open: true,
+            summary: {
+              subjectId: targetSubj.id,
+              subjectName: targetSubj.name,
+              durationMinutes: durationMins,
+              type: 'Timer',
+              note: sessionNote || 'Completed scheduled countdown session',
+              dateStr: new Date().toISOString().split('T')[0]
+            }
+          });
+        }
+      }, 300);
+    }
+    return () => clearInterval(interval);
+  }, [isTimerRunning, timerEndTimestamp, user, selectedSubjectId, subjects, sessionNote, timerTotalSecs]);
+
+  const handleEnableAudio = () => {
+    audioSynth.init();
+    audioSynth.playChime(user.soundType, user.soundVolume);
+    setAudioEnabled(true);
+  };
+
+  const handleStartStopwatch = () => {
+    audioSynth.init();
+    if (!isSwRunning) {
+      setSwStartTime(Date.now());
+      setIsSwRunning(true);
+    }
+  };
+
+  const handlePauseStopwatch = () => {
+    if (isSwRunning) {
+      const now = Date.now();
+      setSwAccumulatedMs(prev => prev + (now - swStartTime));
+      setIsSwRunning(false);
+    }
+  };
+
+  const handleResetStopwatch = () => {
+    setIsSwRunning(false);
+    setSwStartTime(null);
+    setSwAccumulatedMs(0);
+    setSwDisplaySeconds(0);
+  };
+
+  const handleStopStopwatch = () => {
+    handlePauseStopwatch();
+    const finalSecs = swDisplaySeconds;
+    if (finalSecs < 10) {
+      alert("Session too short to record (less than 10 seconds).");
+      handleResetStopwatch();
+      return;
+    }
+    setSaveModal({ open: true, durationSecs: finalSecs });
+  };
+
+  const confirmSaveStopwatchSession = () => {
+    const mins = Math.max(1, Math.round(saveModal.durationSecs / 60));
+    const targetSubj = subjects.find(s => s.id === selectedSubjectId) || subjects[0];
+    const newSess = {
+      id: 'sess-' + Date.now(),
+      subjectId: targetSubj.id,
+      subjectName: targetSubj.name,
+      startTime: new Date(Date.now() - saveModal.durationSecs * 1000).toISOString(),
+      endTime: new Date().toISOString(),
+      durationMinutes: mins,
+      type: 'Stopwatch',
+      note: sessionNote || 'Stopwatch focus session',
+      dateStr: new Date().toISOString().split('T')[0]
+    };
+
+    setSessions(prev => [newSess, ...prev]);
+    setSaveModal({ open: false, durationSecs: 0 });
+    handleResetStopwatch();
+    setSessionNote('');
+  };
+
+  const handleStartTimer = (mins) => {
+    audioSynth.init();
+    const duration = mins || timerPresetMins;
+    const totalSecs = duration * 60;
+    setTimerTotalSecs(totalSecs);
+    setTimerRemainingSecs(totalSecs);
+    setTimerEndTimestamp(Date.now() + totalSecs * 1000);
+    setIsTimerRunning(true);
+  };
+
+  const handlePauseTimer = () => {
+    setIsTimerRunning(false);
+  };
+
+  const handleResumeTimer = () => {
+    audioSynth.init();
+    setTimerEndTimestamp(Date.now() + timerRemainingSecs * 1000);
+    setIsTimerRunning(true);
+  };
+
+  const handleResetTimer = () => {
+    setIsTimerRunning(false);
+    setTimerRemainingSecs(timerPresetMins * 60);
+  };
+
+  const confirmSaveTimerSession = () => {
+    if (!completionModal.summary) return;
+    const newSess = {
+      id: 'sess-' + Date.now(),
+      ...completionModal.summary,
+      startTime: new Date(Date.now() - completionModal.summary.durationMinutes * 60000).toISOString(),
+      endTime: new Date().toISOString(),
+    };
+    setSessions(prev => [newSess, ...prev]);
+    setCompletionModal({ open: false, summary: null });
+    setSessionNote('');
+    handleResetTimer();
+  };
+
+  const todayStr = useMemo(() => new Date().toISOString().split('T')[0], []);
+
+  const todaySessions = useMemo(() => {
+    return sessions.filter(s => s.dateStr === todayStr);
+  }, [sessions, todayStr]);
+
+  const todayTotalMinutes = useMemo(() => {
+    return todaySessions.reduce((acc, curr) => acc + curr.durationMinutes, 0);
+  }, [todaySessions]);
+
+  const todayMostStudiedSubject = useMemo(() => {
+    if (todaySessions.length === 0) return 'None yet';
+    const subjMap = {};
+    todaySessions.forEach(s => {
+      subjMap[s.subjectName] = (subjMap[s.subjectName] || 0) + s.durationMinutes;
+    });
+    let top = 'None';
+    let max = 0;
+    Object.entries(subjMap).forEach(([name, mins]) => {
+      if (mins > max) {
+        max = mins;
+        top = name;
+      }
+    });
+    return `${top} (${Math.floor(max / 60)}h ${max % 60}m)`;
+  }, [todaySessions]);
+
+  const streakDays = useMemo(() => {
+    const dates = Array.from(new Set(sessions.map(s => s.dateStr))).sort().reverse();
+    if (dates.length === 0) return 0;
+    
+    let streak = 0;
+    let checkDate = new Date();
+    
+    // Check if studied today
+    let checkStr = checkDate.toISOString().split('T')[0];
+    if (!dates.includes(checkStr)) {
+      // Check yesterday
+      checkDate.setDate(checkDate.getDate() - 1);
+      checkStr = checkDate.toISOString().split('T')[0];
+      if (!dates.includes(checkStr)) return 0;
+    }
+
+    while (dates.includes(checkStr)) {
+      streak++;
+      checkDate.setDate(checkDate.getDate() - 1);
+      checkStr = checkDate.toISOString().split('T')[0];
+    }
+    return streak;
+  }, [sessions]);
+
+  // Tasks Analytics
+  const completedTasksCount = useMemo(() => tasks.filter(t => t.completed).length, [tasks]);
+  const pendingTasksCount = useMemo(() => tasks.filter(t => !t.completed).length, [tasks]);
+
+  // Format Helpers
+  const formatTimeSeconds = (totalSecs) => {
+    const hrs = Math.floor(totalSecs / 3600);
+    const mins = Math.floor((totalSecs % 3600) / 60);
+    const secs = totalSecs % 60;
+    return `${hrs > 0 ? String(hrs).padStart(2, '0') + ':' : ''}${String(mins).padStart(2, '0')}:${String(secs).padStart(2, '0')}`;
+  };
+
+  const formatHoursMinutes = (totalMins) => {
+    const h = Math.floor(totalMins / 60);
+    const m = totalMins % 60;
+    if (h === 0) return `${m}m`;
+    return `${h}h ${m}m`;
+  };
+
+  const renderHeader = () => {
+    const timeFormatted = currentTime.toLocaleTimeString([], { 
+      hour: '2-digit', 
+      minute: '2-digit', 
+      second: '2-digit',
+      hour12: user.timeFormat === '12h' 
+    });
+    const dateFormatted = currentTime.toLocaleDateString([], { 
+      weekday: 'long', 
+      month: 'long', 
+      day: 'numeric', 
+      year: 'numeric' 
+    });
+
+    return (
+      <header className="flex flex-col md:flex-row justify-between items-start md:items-center bg-slate-900/80 backdrop-blur-md p-4 md:p-6 rounded-2xl border border-indigo-900/40 shadow-xl mb-6">
+        <div>
+          <div className="flex items-center gap-2">
+            <h1 className="text-xl md:text-2xl font-bold bg-gradient-to-r from-indigo-300 via-sky-300 to-purple-300 bg-clip-text text-transparent">
+              Good evening, {user.name} 🌙
+            </h1>
+            <span className="px-2 py-0.5 text-xs bg-indigo-950/80 text-indigo-300 rounded-full border border-indigo-800/50 flex items-center gap-1">
+              <Sparkles className="w-3 h-3 text-amber-400" /> Night Owl
+            </span>
+          </div>
+          <p className="text-slate-400 text-xs md:text-sm mt-1 flex items-center gap-2">
+            <Calendar className="w-4 h-4 text-indigo-400" /> {dateFormatted}
+          </p>
+        </div>
+
+        <div className="mt-4 md:mt-0 flex items-center gap-4 w-full md:w-auto justify-between md:justify-end">
+          <div className="text-right">
+            <div className="font-mono text-xl md:text-2xl font-bold text-sky-400 tracking-wider flex items-center gap-2">
+              <Clock className="w-5 h-5 text-indigo-400 animate-pulse" />
+              {timeFormatted}
+            </div>
+            <div className="text-xs text-slate-500">Local Timezone</div>
+          </div>
+
+          <button 
+            onClick={() => setActiveTab('settings')}
+            className="p-2.5 rounded-xl bg-slate-800/80 hover:bg-slate-700 text-slate-300 hover:text-white transition border border-slate-700/50"
+            title="Settings"
+          >
+            <Settings className="w-5 h-5" />
+          </button>
+        </div>
+      </header>
+    );
+  };
+
+  const renderDashboard = () => {
+    return (
+      <div className="space-y-6">
+        {/* Today's Summary Banner */}
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+          <div className="bg-gradient-to-br from-indigo-950/60 to-slate-900 p-4 rounded-2xl border border-indigo-800/30 shadow-lg">
+            <div className="flex items-center justify-between text-indigo-300 text-xs font-semibold uppercase tracking-wider mb-2">
+              <span>Today Studied</span>
+              <Clock className="w-4 h-4 text-indigo-400" />
+            </div>
+            <div className="text-2xl md:text-3xl font-extrabold text-white">
+              {formatHoursMinutes(todayTotalMinutes)}
+            </div>
+            <div className="text-xs text-slate-400 mt-1">Goal: {user.dailyGoalHours}h ({Math.min(100, Math.round((todayTotalMinutes / (user.dailyGoalHours * 60)) * 100))}% reached)</div>
+            <div className="w-full bg-slate-800 rounded-full h-1.5 mt-2 overflow-hidden">
+              <div 
+                className="bg-gradient-to-r from-indigo-500 to-sky-400 h-1.5 rounded-full" 
+                style={{ width: `${Math.min(100, (todayTotalMinutes / (user.dailyGoalHours * 60)) * 100)}%` }}
+              ></div>
+            </div>
+          </div>
+
+          <div className="bg-gradient-to-br from-slate-900 to-purple-950/40 p-4 rounded-2xl border border-purple-800/30 shadow-lg">
+            <div className="flex items-center justify-between text-purple-300 text-xs font-semibold uppercase tracking-wider mb-2">
+              <span>Study Sessions</span>
+              <Layers className="w-4 h-4 text-purple-400" />
+            </div>
+            <div className="text-2xl md:text-3xl font-extrabold text-white">
+              {todaySessions.length} <span className="text-sm font-normal text-slate-400">sessions</span>
+            </div>
+            <div className="text-xs text-purple-300/80 mt-1">Streak: {streakDays} days 🔥</div>
+          </div>
+
+          <div className="bg-gradient-to-br from-slate-900 to-sky-950/40 p-4 rounded-2xl border border-sky-800/30 shadow-lg">
+            <div className="flex items-center justify-between text-sky-300 text-xs font-semibold uppercase tracking-wider mb-2">
+              <span>Top Subject</span>
+              <BookOpen className="w-4 h-4 text-sky-400" />
+            </div>
+            <div className="text-lg md:text-xl font-bold text-white truncate">
+              {todayMostStudiedSubject}
+            </div>
+            <div className="text-xs text-slate-400 mt-1">Today's Focus</div>
+          </div>
+
+          <div className="bg-gradient-to-br from-slate-900 to-emerald-950/40 p-4 rounded-2xl border border-emerald-800/30 shadow-lg">
+            <div className="flex items-center justify-between text-emerald-300 text-xs font-semibold uppercase tracking-wider mb-2">
+              <span>Tasks Progress</span>
+              <CheckSquare className="w-4 h-4 text-emerald-400" />
+            </div>
+            <div className="text-2xl md:text-3xl font-extrabold text-white">
+              {completedTasksCount}/{tasks.length}
+            </div>
+            <div className="text-xs text-emerald-400 mt-1">{pendingTasksCount} pending tasks</div>
+          </div>
+        </div>
+
+        {/* Quick Launch Buttons */}
+        <div className="bg-slate-900/60 p-5 rounded-2xl border border-indigo-900/30 backdrop-blur-sm">
+          <h3 className="text-sm font-semibold text-slate-400 uppercase tracking-wider mb-3">Quick Actions</h3>
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+            <button 
+              onClick={() => { setStudyMode('stopwatch'); setActiveTab('study'); }}
+              className="flex items-center justify-center gap-2 p-3.5 bg-gradient-to-r from-indigo-600 to-indigo-700 hover:from-indigo-500 hover:to-indigo-600 text-white rounded-xl font-medium shadow-md transition transform active:scale-95"
+            >
+              <Play className="w-4 h-4" /> Start Stopwatch
+            </button>
+            <button 
+              onClick={() => { setStudyMode('timer'); setActiveTab('study'); }}
+              className="flex items-center justify-center gap-2 p-3.5 bg-gradient-to-r from-sky-600 to-blue-700 hover:from-sky-500 hover:to-blue-600 text-white rounded-xl font-medium shadow-md transition transform active:scale-95"
+            >
+              <Clock className="w-4 h-4" /> Quick Timer
+            </button>
+            <button 
+              onClick={() => { setNewTaskModal(true); }}
+              className="flex items-center justify-center gap-2 p-3.5 bg-slate-800 hover:bg-slate-700 text-slate-200 rounded-xl font-medium border border-slate-700 transition transform active:scale-95"
+            >
+              <Plus className="w-4 h-4 text-emerald-400" /> Add Task
+            </button>
+            <button 
+              onClick={() => setActiveTab('reports')}
+              className="flex items-center justify-center gap-2 p-3.5 bg-slate-800 hover:bg-slate-700 text-slate-200 rounded-xl font-medium border border-slate-700 transition transform active:scale-95"
+            >
+              <BarChart3 className="w-4 h-4 text-purple-400" /> View Analytics
+            </button>
+          </div>
+        </div>
+
+        {/* Two-Column Grid: Recent Sessions & Today's Tasks */}
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+          {/* Recent Sessions */}
+          <div className="bg-slate-900/80 p-5 rounded-2xl border border-indigo-900/30">
+            <div className="flex justify-between items-center mb-4">
+              <h3 className="text-lg font-bold text-white flex items-center gap-2">
+                <Clock className="w-5 h-5 text-indigo-400" /> Recent Study Sessions
+              </h3>
+              <button 
+                onClick={() => setActiveTab('history')}
+                className="text-xs text-sky-400 hover:text-sky-300 font-medium flex items-center gap-1"
+              >
+                View All <ChevronRight className="w-3 h-3" />
+              </button>
+            </div>
+
+            {sessions.length === 0 ? (
+              <div className="text-center py-8 text-slate-500">
+                <Moon className="w-10 h-10 mx-auto text-slate-700 mb-2" />
+                <p>No study sessions logged yet.</p>
+                <p className="text-xs text-slate-600 mt-1">Start your stopwatch or timer to begin tracking.</p>
+              </div>
+            ) : (
+              <div className="space-y-3">
+                {sessions.slice(0, 4).map(s => {
+                  const subj = subjects.find(sub => sub.id === s.subjectId);
+                  return (
+                    <div key={s.id} className="flex items-center justify-between p-3 rounded-xl bg-slate-950/50 border border-slate-800/80 hover:border-indigo-900/50 transition">
+                      <div className="flex items-center gap-3">
+                        <span className="text-lg p-2 rounded-lg bg-slate-800/80 border border-slate-700/50">
+                          {subj?.icon || '📚'}
+                        </span>
+                        <div>
+                          <div className="font-semibold text-white text-sm">{s.subjectName}</div>
+                          <div className="text-xs text-slate-400">{s.type} • {s.dateStr}</div>
+                        </div>
+                      </div>
+                      <div className="text-right">
+                        <div className="font-bold text-sky-400 text-sm">{s.durationMinutes} mins</div>
+                        <div className="text-xs text-slate-500 truncate max-w-[120px]">{s.note || 'No note'}</div>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+
+          {/* Today's Tasks */}
+          <div className="bg-slate-900/80 p-5 rounded-2xl border border-indigo-900/30">
+            <div className="flex justify-between items-center mb-4">
+              <h3 className="text-lg font-bold text-white flex items-center gap-2">
+                <CheckSquare className="w-5 h-5 text-emerald-400" /> Today's Tasks
+              </h3>
+              <button 
+                onClick={() => setActiveTab('tasks')}
+                className="text-xs text-sky-400 hover:text-sky-300 font-medium flex items-center gap-1"
+              >
+                Manage Tasks <ChevronRight className="w-3 h-3" />
+              </button>
+            </div>
+
+            {tasks.length === 0 ? (
+              <div className="text-center py-8 text-slate-500">
+                <CheckSquare className="w-10 h-10 mx-auto text-slate-700 mb-2" />
+                <p>No study tasks available.</p>
+              </div>
+            ) : (
+              <div className="space-y-2.5">
+                {tasks.slice(0, 5).map(t => {
+                  const subj = subjects.find(s => s.id === t.subjectId);
+                  return (
+                    <div key={t.id} className="flex items-center justify-between p-3 rounded-xl bg-slate-950/50 border border-slate-800/80">
+                      <div className="flex items-center gap-3">
+                        <button 
+                          onClick={() => {
+                            setTasks(tasks.map(item => item.id === t.id ? { ...item, completed: !item.completed } : item));
+                          }}
+                          className={`w-5 h-5 rounded-md border flex items-center justify-center transition ${
+                            t.completed 
+                              ? 'bg-emerald-500 border-emerald-400 text-slate-950' 
+                              : 'border-slate-600 hover:border-emerald-400'
+                          }`}
+                        >
+                          {t.completed && <Check className="w-3.5 h-3.5 stroke-[3]" />}
+                        </button>
+                        <span className={`text-sm ${t.completed ? 'line-through text-slate-500' : 'text-slate-200'}`}>
+                          {t.name}
+                        </span>
+                      </div>
+
+                      {subj && (
+                        <span 
+                          className="px-2 py-0.5 text-xs rounded-full border font-medium"
+                          style={{ backgroundColor: `${subj.color}15`, borderColor: `${subj.color}40`, color: subj.color }}
+                        >
+                          {subj.name}
+                        </span>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+        </div>
+      </div>
+    );
+  };
+
+  const renderStudyArena = () => {
+    const currentSubj = subjects.find(s => s.id === selectedSubjectId) || subjects[0];
+
+    return (
+      <div className="space-y-6 max-w-4xl mx-auto">
+        {/* Audio Enabled Banner Notice */}
+        {!audioEnabled && (
+          <div className="bg-indigo-950/80 border border-indigo-700/60 p-3.5 rounded-xl flex items-center justify-between text-indigo-200 text-sm shadow-md">
+            <div className="flex items-center gap-2">
+              <Bell className="w-4 h-4 text-amber-400 animate-bounce" />
+              <span>Enable audio synthesis so timer completion chimes sound clearly.</span>
+            </div>
+            <button 
+              onClick={handleEnableAudio}
+              className="px-3 py-1.5 bg-indigo-600 hover:bg-indigo-500 text-white rounded-lg text-xs font-semibold shadow transition"
+            >
+              Enable Sound
+            </button>
+          </div>
+        )}
+
+        {/* Mode Switcher Header */}
+        <div className="bg-slate-900/90 p-4 rounded-2xl border border-indigo-900/40 shadow-xl flex flex-col md:flex-row gap-4 justify-between items-center">
+          <div className="flex items-center gap-3 w-full md:w-auto">
+            <span className="text-sm font-semibold text-slate-400">Mode:</span>
+            <div className="grid grid-cols-2 bg-slate-950 p-1 rounded-xl border border-slate-800 w-full md:w-64">
+              <button
+                onClick={() => setStudyMode('stopwatch')}
+                className={`py-2 px-3 rounded-lg text-xs font-bold transition flex items-center justify-center gap-1.5 ${
+                  studyMode === 'stopwatch' 
+                    ? 'bg-gradient-to-r from-indigo-600 to-indigo-700 text-white shadow' 
+                    : 'text-slate-400 hover:text-white'
+                }`}
+              >
+                <Play className="w-3.5 h-3.5" /> Stopwatch
+              </button>
+              <button
+                onClick={() => setStudyMode('timer')}
+                className={`py-2 px-3 rounded-lg text-xs font-bold transition flex items-center justify-center gap-1.5 ${
+                  studyMode === 'timer' 
+                    ? 'bg-gradient-to-r from-sky-600 to-blue-700 text-white shadow' 
+                    : 'text-slate-400 hover:text-white'
+                }`}
+              >
+                <Clock className="w-3.5 h-3.5" /> Countdown Timer
+              </button>
+            </div>
+          </div>
+
+          {/* Subject Picker */}
+          <div className="flex items-center gap-2 w-full md:w-auto">
+            <span className="text-sm font-semibold text-slate-400">Subject:</span>
+            <select
+              value={selectedSubjectId}
+              onChange={e => setSelectedSubjectId(e.target.value)}
+              className="bg-slate-950 text-slate-200 border border-slate-700/80 rounded-xl px-3 py-2 text-sm focus:outline-none focus:border-indigo-500 w-full md:w-48"
+            >
+              {subjects.map(s => (
+                <option key={s.id} value={s.id}>{s.icon} {s.name}</option>
+              ))}
+            </select>
+            <button 
+              onClick={() => setNewSubjModal(true)}
+              className="p-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-indigo-300 border border-slate-700"
+              title="Add Subject"
+            >
+              <Plus className="w-4 h-4" />
+            </button>
+          </div>
+        </div>
+
+        {/* Main Focus Clock Card */}
+        <div className="bg-slate-900/90 rounded-3xl border border-indigo-900/50 p-8 text-center shadow-2xl relative overflow-hidden">
+          {/* Subtle Background Glow */}
+          <div className="absolute -top-24 -left-24 w-64 h-64 bg-indigo-600/10 rounded-full blur-3xl pointer-events-none"></div>
+          <div className="absolute -bottom-24 -right-24 w-64 h-64 bg-sky-600/10 rounded-full blur-3xl pointer-events-none"></div>
+
+          {/* Active Subject Tag */}
+          <div className="inline-flex items-center gap-2 px-4 py-1.5 rounded-full border border-indigo-800/50 bg-indigo-950/60 mb-6">
+            <span className="text-lg">{currentSubj.icon}</span>
+            <span className="text-sm font-semibold text-slate-200">{currentSubj.name}</span>
+          </div>
+
+          {/* DISPLAY MODE 1: STOPWATCH */}
+          {studyMode === 'stopwatch' && (
+            <div>
+              <div className="font-mono text-6xl md:text-8xl font-extrabold text-white tracking-widest my-6 drop-shadow-[0_0_20px_rgba(99,102,241,0.25)]">
+                {formatTimeSeconds(swDisplaySeconds)}
+              </div>
+
+              <div className="flex flex-wrap justify-center gap-4 my-8">
+                {!isSwRunning ? (
+                  <button
+                    onClick={handleStartStopwatch}
+                    className="px-8 py-4 bg-gradient-to-r from-indigo-600 to-indigo-700 hover:from-indigo-500 hover:to-indigo-600 text-white rounded-2xl font-bold text-lg shadow-lg hover:shadow-indigo-500/25 transition transform active:scale-95 flex items-center gap-2"
+                  >
+                    <Play className="w-5 h-5 fill-current" /> Start Focus
+                  </button>
+                ) : (
+                  <button
+                    onClick={handlePauseStopwatch}
+                    className="px-8 py-4 bg-amber-600 hover:bg-amber-500 text-white rounded-2xl font-bold text-lg shadow-lg transition transform active:scale-95 flex items-center gap-2"
+                  >
+                    <Pause className="w-5 h-5 fill-current" /> Pause
+                  </button>
+                )}
+
+                <button
+                  onClick={handleStopStopwatch}
+                  disabled={swDisplaySeconds === 0}
+                  className="px-6 py-4 bg-rose-950/80 hover:bg-rose-900 border border-rose-800/60 text-rose-200 rounded-2xl font-semibold text-base shadow transition disabled:opacity-40 disabled:cursor-not-allowed flex items-center gap-2"
+                >
+                  <Square className="w-5 h-5 fill-current" /> Stop & Save
+                </button>
+
+                <button
+                  onClick={handleResetStopwatch}
+                  disabled={swDisplaySeconds === 0 && !isSwRunning}
+                  className="p-4 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-2xl transition disabled:opacity-40 border border-slate-700"
+                  title="Reset Stopwatch"
+                >
+                  <RotateCcw className="w-5 h-5" />
+                </button>
+              </div>
+            </div>
+          )}
+
+          {/* DISPLAY MODE 2: COUNTDOWN TIMER */}
+          {studyMode === 'timer' && (
+            <div>
+              {/* Preset Selector */}
+              <div className="flex flex-wrap justify-center items-center gap-2 mb-6">
+                {[25, 30, 45, 60, 90].map(mins => (
+                  <button
+                    key={mins}
+                    onClick={() => {
+                      if (!isTimerRunning) {
+                        setTimerPresetMins(mins);
+                        setTimerRemainingSecs(mins * 60);
+                        setTimerTotalSecs(mins * 60);
+                      }
+                    }}
+                    disabled={isTimerRunning}
+                    className={`px-3.5 py-1.5 rounded-xl text-xs font-semibold border transition ${
+                      timerPresetMins === mins && !customTimerMins
+                        ? 'bg-sky-600 border-sky-400 text-white shadow-md'
+                        : 'bg-slate-950 border-slate-800 text-slate-400 hover:text-slate-200'
+                    }`}
+                  >
+                    {mins} min
+                  </button>
+                ))}
+
+                {/* Custom input */}
+                <div className="flex items-center gap-1 ml-2">
+                  <input
+                    type="number"
+                    placeholder="Custom"
+                    value={customTimerMins}
+                    disabled={isTimerRunning}
+                    onChange={e => {
+                      const val = parseInt(e.target.value);
+                      setCustomTimerMins(e.target.value);
+                      if (val && val > 0) {
+                        setTimerPresetMins(val);
+                        setTimerRemainingSecs(val * 60);
+                        setTimerTotalSecs(val * 60);
+                      }
+                    }}
+                    className="w-20 bg-slate-950 text-white text-xs border border-slate-700 rounded-xl px-2.5 py-1.5 text-center focus:outline-none focus:border-sky-500"
+                  />
+                  <span className="text-xs text-slate-500">min</span>
+                </div>
+              </div>
+
+              {/* Countdown Digits */}
+              <div className="font-mono text-6xl md:text-8xl font-extrabold text-white tracking-widest my-6 drop-shadow-[0_0_20px_rgba(56,189,248,0.25)]">
+                {formatTimeSeconds(timerRemainingSecs)}
+              </div>
+
+              {/* Progress bar */}
+              <div className="w-full bg-slate-950 rounded-full h-2 max-w-md mx-auto mb-8 overflow-hidden border border-slate-800">
+                <div 
+                  className="bg-gradient-to-r from-sky-500 to-indigo-500 h-2 transition-all duration-500" 
+                  style={{ width: `${Math.max(0, Math.min(100, (timerRemainingSecs / timerTotalSecs) * 100))}%` }}
+                ></div>
+              </div>
+
+              <div className="flex flex-wrap justify-center gap-4 my-6">
+                {!isTimerRunning ? (
+                  <button
+                    onClick={() => handleStartTimer()}
+                    className="px-8 py-4 bg-gradient-to-r from-sky-600 to-blue-700 hover:from-sky-500 hover:to-blue-600 text-white rounded-2xl font-bold text-lg shadow-lg hover:shadow-sky-500/25 transition transform active:scale-95 flex items-center gap-2"
+                  >
+                    <Play className="w-5 h-5 fill-current" /> Start Timer
+                  </button>
+                ) : (
+                  <button
+                    onClick={handlePauseTimer}
+                    className="px-8 py-4 bg-amber-600 hover:bg-amber-500 text-white rounded-2xl font-bold text-lg shadow-lg transition transform active:scale-95 flex items-center gap-2"
+                  >
+                    <Pause className="w-5 h-5 fill-current" /> Pause
+                  </button>
+                )}
+
+                <button
+                  onClick={handleResetTimer}
+                  className="p-4 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-2xl transition border border-slate-700"
+                  title="Reset Timer"
+                >
+                  <RotateCcw className="w-5 h-5" />
+                </button>
+              </div>
+            </div>
+          )}
+
+          {/* Optional Session Note Input */}
+          <div className="max-w-md mx-auto mt-6">
+            <input
+              type="text"
+              placeholder="Add optional session note (e.g. Chapter 4 revision)..."
+              value={sessionNote}
+              onChange={e => setSessionNote(e.target.value)}
+              className="w-full bg-slate-950/80 border border-slate-800 rounded-xl px-4 py-2.5 text-xs text-slate-200 placeholder-slate-600 focus:outline-none focus:border-indigo-500/80"
+            />
+          </div>
+        </div>
+      </div>
+    );
+  };
+
+  const renderTasks = () => {
+    const filteredTasks = tasks.filter(t => {
+      if (taskFilterStatus === 'Pending') return !t.completed;
+      if (taskFilterStatus === 'Completed') return t.completed;
+      return true;
+    });
+
+    return (
+      <div className="space-y-6">
+        <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 bg-slate-900/80 p-5 rounded-2xl border border-indigo-900/30">
+          <div>
+            <h2 className="text-xl font-bold text-white flex items-center gap-2">
+              <CheckSquare className="w-5 h-5 text-emerald-400" /> Study To-Do & Tasks
+            </h2>
+            <p className="text-xs text-slate-400 mt-1">Organize study goals and subject revisions.</p>
+          </div>
+
+          <button
+            onClick={() => setNewTaskModal(true)}
+            className="px-4 py-2.5 bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white text-sm font-semibold rounded-xl shadow transition flex items-center gap-2"
+          >
+            <Plus className="w-4 h-4" /> Add New Task
+          </button>
+        </div>
+
+        {/* Filter Bar */}
+        <div className="flex gap-2 border-b border-slate-800 pb-3 overflow-x-auto">
+          {['All', 'Pending', 'Completed'].map(status => (
+            <button
+              key={status}
+              onClick={() => setTaskFilterStatus(status)}
+              className={`px-4 py-1.5 rounded-xl text-xs font-semibold transition ${
+                taskFilterStatus === status
+                  ? 'bg-indigo-600 text-white'
+                  : 'bg-slate-900 text-slate-400 hover:text-white'
+              }`}
+            >
+              {status}
+            </button>
+          ))}
+        </div>
+
+        {/* Tasks List */}
+        <div className="space-y-3">
+          {filteredTasks.length === 0 ? (
+            <div className="text-center py-12 bg-slate-900/40 rounded-2xl border border-slate-800">
+              <CheckSquare className="w-12 h-12 mx-auto text-slate-700 mb-2" />
+              <p className="text-slate-400">No tasks found matching filter.</p>
+            </div>
+          ) : (
+            filteredTasks.map(task => {
+              const subj = subjects.find(s => s.id === task.subjectId);
+              return (
+                <div 
+                  key={task.id}
+                  className="flex items-center justify-between p-4 rounded-xl bg-slate-900/80 border border-slate-800/80 hover:border-indigo-900/40 transition"
+                >
+                  <div className="flex items-center gap-3">
+                    <button
+                      onClick={() => {
+                        setTasks(tasks.map(t => t.id === task.id ? { ...t, completed: !t.completed } : t));
+                      }}
+                      className={`w-6 h-6 rounded-lg border flex items-center justify-center transition ${
+                        task.completed 
+                          ? 'bg-emerald-500 border-emerald-400 text-slate-950' 
+                          : 'border-slate-600 hover:border-emerald-400'
+                      }`}
+                    >
+                      {task.completed && <Check className="w-4 h-4 stroke-[3]" />}
+                    </button>
+                    <div>
+                      <div className={`text-sm font-medium ${task.completed ? 'line-through text-slate-500' : 'text-white'}`}>
+                        {task.name}
+                      </div>
+                      <div className="flex items-center gap-2 mt-1 text-xs text-slate-400">
+                        <span>Due: {task.dueDate}</span>
+                        <span>•</span>
+                        <span className={`font-semibold ${
+                          task.priority === 'High' ? 'text-rose-400' : task.priority === 'Medium' ? 'text-amber-400' : 'text-slate-400'
+                        }`}>
+                          {task.priority} Priority
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="flex items-center gap-3">
+                    {subj && (
+                      <span 
+                        className="px-2.5 py-1 text-xs rounded-full border font-medium hidden sm:inline-block"
+                        style={{ backgroundColor: `${subj.color}15`, borderColor: `${subj.color}40`, color: subj.color }}
+                      >
+                        {subj.icon} {subj.name}
+                      </span>
+                    )}
+
+                    <button
+                      onClick={() => setTasks(tasks.filter(t => t.id !== task.id))}
+                      className="p-1.5 text-slate-500 hover:text-rose-400 rounded-lg hover:bg-slate-800 transition"
+                      title="Delete task"
+                    >
+                      <Trash2 className="w-4 h-4" />
+                    </button>
+                  </div>
+                </div>
+              );
+            })
+          )}
+        </div>
+      </div>
+    );
+  };
+
+  const renderHistory = () => {
+    const filteredSessions = sessions.filter(s => {
+      if (historyFilterSubject !== 'All' && s.subjectId !== historyFilterSubject) return false;
+      return true;
+    });
+
+    return (
+      <div className="space-y-6">
+        <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 bg-slate-900/80 p-5 rounded-2xl border border-indigo-900/30">
+          <div>
+            <h2 className="text-xl font-bold text-white flex items-center gap-2">
+              <Clock className="w-5 h-5 text-indigo-400" /> Study History & Logs
+            </h2>
+            <p className="text-xs text-slate-400 mt-1">Review past study logs and session durations.</p>
+          </div>
+
+          <div className="flex items-center gap-2">
+            <Filter className="w-4 h-4 text-slate-400" />
+            <select
+              value={historyFilterSubject}
+              onChange={e => setHistoryFilterSubject(e.target.value)}
+              className="bg-slate-950 border border-slate-800 text-xs text-slate-200 rounded-xl px-3 py-2"
+            >
+              <option value="All">All Subjects</option>
+              {subjects.map(s => (
+                <option key={s.id} value={s.id}>{s.name}</option>
+              ))}
+            </select>
+          </div>
+        </div>
+
+        {/* Sessions Table */}
+        <div className="bg-slate-900/80 rounded-2xl border border-indigo-900/30 overflow-hidden">
+          {filteredSessions.length === 0 ? (
+            <div className="text-center py-12 text-slate-500">
+              <p>No study logs recorded for this selection.</p>
+            </div>
+          ) : (
+            <div className="overflow-x-auto">
+              <table className="w-full text-left border-collapse text-xs md:text-sm">
+                <thead>
+                  <tr className="bg-slate-950/80 text-slate-400 border-b border-slate-800">
+                    <th className="p-4">Date</th>
+                    <th className="p-4">Subject</th>
+                    <th className="p-4">Type</th>
+                    <th className="p-4">Duration</th>
+                    <th className="p-4">Note</th>
+                    <th className="p-4 text-right">Actions</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-800/60 text-slate-300">
+                  {filteredSessions.map(s => {
+                    const subj = subjects.find(sub => sub.id === s.subjectId);
+                    return (
+                      <tr key={s.id} className="hover:bg-slate-800/40 transition">
+                        <td className="p-4 font-mono text-slate-400">{s.dateStr}</td>
+                        <td className="p-4 font-semibold text-white flex items-center gap-2">
+                          <span>{subj?.icon || '📖'}</span>
+                          <span>{s.subjectName}</span>
+                        </td>
+                        <td className="p-4">
+                          <span className={`px-2 py-0.5 rounded-full text-xs ${s.type === 'Timer' ? 'bg-sky-950 text-sky-400 border border-sky-800/40' : 'bg-indigo-950 text-indigo-400 border border-indigo-800/40'}`}>
+                            {s.type}
+                          </span>
+                        </td>
+                        <td className="p-4 font-bold text-sky-400">{s.durationMinutes} mins</td>
+                        <td className="p-4 text-slate-400 max-w-xs truncate">{s.note || '-'}</td>
+                        <td className="p-4 text-right">
+                          <button
+                            onClick={() => setSessions(sessions.filter(item => item.id !== s.id))}
+                            className="p-1.5 text-slate-500 hover:text-rose-400 rounded-lg hover:bg-slate-800 transition"
+                            title="Delete Log"
+                          >
+                            <Trash2 className="w-4 h-4" />
+                          </button>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </div>
+      </div>
+    );
+  };
+
+  const renderReports = () => {
+    // Subject wise aggregation
+    const subjMap = {};
+    sessions.forEach(s => {
+      subjMap[s.subjectName] = (subjMap[s.subjectName] || 0) + s.durationMinutes;
+    });
+
+    const totalMinutesAllTime = Object.values(subjMap).reduce((a, b) => a + b, 0);
+
+    return (
+      <div className="space-y-6">
+        <div className="bg-slate-900/80 p-5 rounded-2xl border border-indigo-900/30">
+          <h2 className="text-xl font-bold text-white flex items-center gap-2">
+            <BarChart3 className="w-5 h-5 text-purple-400" /> Night Owl Analytics & Reports
+          </h2>
+          <p className="text-xs text-slate-400 mt-1">Real-time dynamic subject focus distribution.</p>
+        </div>
+
+        {/* Overview Cards */}
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+          <div className="bg-slate-900/80 p-5 rounded-2xl border border-indigo-900/30 text-center">
+            <div className="text-xs text-slate-400 uppercase tracking-wider mb-1">Total Lifetime Focus</div>
+            <div className="text-3xl font-extrabold text-sky-400">{formatHoursMinutes(totalMinutesAllTime)}</div>
+          </div>
+          <div className="bg-slate-900/80 p-5 rounded-2xl border border-indigo-900/30 text-center">
+            <div className="text-xs text-slate-400 uppercase tracking-wider mb-1">Total Sessions Completed</div>
+            <div className="text-3xl font-extrabold text-purple-400">{sessions.length}</div>
+          </div>
+          <div className="bg-slate-900/80 p-5 rounded-2xl border border-indigo-900/30 text-center">
+            <div className="text-xs text-slate-400 uppercase tracking-wider mb-1">Current Study Streak</div>
+            <div className="text-3xl font-extrabold text-amber-400">{streakDays} Days 🔥</div>
+          </div>
+        </div>
+
+        {/* Subject Breakdown Progress Bars */}
+        <div className="bg-slate-900/80 p-6 rounded-2xl border border-indigo-900/30">
+          <h3 className="text-lg font-bold text-white mb-4">Subject Time Distribution</h3>
+
+          {Object.keys(subjMap).length === 0 ? (
+            <p className="text-center py-6 text-slate-500">No session data available for subject breakdown.</p>
+          ) : (
+            <div className="space-y-4">
+              {Object.entries(subjMap).map(([name, mins]) => {
+                const percent = Math.round((mins / (totalMinutesAllTime || 1)) * 100);
+                const subj = subjects.find(s => s.name === name);
+                const color = subj?.color || '#6366f1';
+
+                return (
+                  <div key={name} className="space-y-1.5">
+                    <div className="flex justify-between text-xs font-semibold text-slate-300">
+                      <span>{subj?.icon || '📚'} {name}</span>
+                      <span>{formatHoursMinutes(mins)} ({percent}%)</span>
+                    </div>
+                    <div className="w-full bg-slate-950 rounded-full h-3 overflow-hidden border border-slate-800">
+                      <div 
+                        className="h-3 rounded-full transition-all duration-500" 
+                        style={{ width: `${percent}%`, backgroundColor: color }}
+                      ></div>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </div>
+      </div>
+    );
+  };
+
+  const renderCalendar = () => {
+    const daysInMonth = 30; // Simulated calendar grid
+    const today = new Date().getDate();
+
+    return (
+      <div className="space-y-6">
+        <div className="bg-slate-900/80 p-5 rounded-2xl border border-indigo-900/30">
+          <h2 className="text-xl font-bold text-white flex items-center gap-2">
+            <Calendar className="w-5 h-5 text-sky-400" /> Study Heatmap Calendar
+          </h2>
+          <p className="text-xs text-slate-400 mt-1">Track monthly study consistency & intensity.</p>
+        </div>
+
+        <div className="bg-slate-900/80 p-6 rounded-2xl border border-indigo-900/30">
+          <div className="grid grid-cols-7 gap-2 text-center text-xs font-semibold text-slate-400 mb-3">
+            <span>Mon</span><span>Tue</span><span>Wed</span><span>Thu</span><span>Fri</span><span>Sat</span><span>Sun</span>
+          </div>
+
+          <div className="grid grid-cols-7 gap-2">
+            {Array.from({ length: daysInMonth }).map((_, idx) => {
+              const dayNum = idx + 1;
+              const isToday = dayNum === today;
+              // Random simulated heatmap intensity for visual delight
+              const intensity = (dayNum % 3 === 0) ? 'high' : (dayNum % 2 === 0) ? 'med' : 'low';
+
+              return (
+                <div 
+                  key={idx}
+                  className={`h-16 rounded-xl border p-2 flex flex-col justify-between transition cursor-pointer hover:border-indigo-500 ${
+                    isToday 
+                      ? 'border-sky-400 bg-sky-950/40' 
+                      : 'border-slate-800/80 bg-slate-950/60'
+                  }`}
+                >
+                  <span className={`text-xs font-mono ${isToday ? 'font-bold text-sky-400' : 'text-slate-400'}`}>
+                    {dayNum}
+                  </span>
+                  
+                  <div className="flex justify-end">
+                    <span className={`w-2.5 h-2.5 rounded-full ${
+                      intensity === 'high' ? 'bg-indigo-500' : intensity === 'med' ? 'bg-sky-500' : 'bg-slate-700'
+                    }`}></span>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      </div>
+    );
+  };
+
+  const renderSettings = () => {
+    return (
+      <div className="space-y-6 max-w-3xl mx-auto">
+        <div className="bg-slate-900/80 p-5 rounded-2xl border border-indigo-900/30">
+          <h2 className="text-xl font-bold text-white flex items-center gap-2">
+            <Settings className="w-5 h-5 text-slate-300" /> Preferences & Sound Settings
+          </h2>
+          <p className="text-xs text-slate-400 mt-1">Configure audio synthesizer, user profile, and study goals.</p>
+        </div>
+
+        {/* User Profile Settings */}
+        <div className="bg-slate-900/80 p-6 rounded-2xl border border-indigo-900/30 space-y-4">
+          <h3 className="text-md font-bold text-indigo-300 flex items-center gap-2">
+            <User className="w-4 h-4" /> Profile Settings
+          </h3>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div>
+              <label className="block text-xs text-slate-400 mb-1">Display Name</label>
+              <input
+                type="text"
+                value={user.name}
+                onChange={e => setUser({ ...user, name: e.target.value })}
+                className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-sm text-white focus:outline-none focus:border-indigo-500"
+              />
+            </div>
+            <div>
+              <label className="block text-xs text-slate-400 mb-1">Daily Goal (Hours)</label>
+              <input
+                type="number"
+                value={user.dailyGoalHours}
+                onChange={e => setUser({ ...user, dailyGoalHours: parseInt(e.target.value) || 1 })}
+                className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-sm text-white focus:outline-none focus:border-indigo-500"
+              />
+            </div>
+          </div>
+        </div>
+
+        {/* Audio Synthesizer Test */}
+        <div className="bg-slate-900/80 p-6 rounded-2xl border border-indigo-900/30 space-y-4">
+          <h3 className="text-md font-bold text-sky-300 flex items-center gap-2">
+            <Volume2 className="w-4 h-4" /> Timer Sound Preferences
+          </h3>
+
+          <div className="space-y-4">
+            <div className="flex items-center justify-between">
+              <span className="text-sm text-slate-300">Play Chime on Completion</span>
+              <button
+                onClick={() => setUser({ ...user, timerSound: !user.timerSound })}
+                className={`w-12 h-6 rounded-full transition p-1 ${user.timerSound ? 'bg-indigo-600' : 'bg-slate-800'}`}
+              >
+                <div className={`w-4 h-4 rounded-full bg-white transition transform ${user.timerSound ? 'translate-x-6' : ''}`}></div>
+              </button>
+            </div>
+
+            <div>
+              <label className="block text-xs text-slate-400 mb-1">Sound Tone Type</label>
+              <select
+                value={user.soundType}
+                onChange={e => setUser({ ...user, soundType: e.target.value })}
+                className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-sm text-white"
+              >
+                <option value="chime">Classic Crystal Chime</option>
+                <option value="bell">Peaceful Deep Bell</option>
+                <option value="harp">Soft Harp Arpeggio</option>
+              </select>
+            </div>
+
+            <button
+              onClick={() => {
+                audioSynth.init();
+                audioSynth.playChime(user.soundType, user.soundVolume);
+              }}
+              className="px-4 py-2 bg-sky-600 hover:bg-sky-500 text-white rounded-xl text-xs font-semibold shadow transition flex items-center gap-2"
+            >
+              <Volume2 className="w-4 h-4" /> Test Selected Sound
+            </button>
+          </div>
+        </div>
+
+        {/* Export / Reset Data */}
+        <div className="bg-slate-900/80 p-6 rounded-2xl border border-indigo-900/30 space-y-4">
+          <h3 className="text-md font-bold text-rose-300 flex items-center gap-2">
+            <Download className="w-4 h-4" /> Data Backup & Export
+          </h3>
+
+          <div className="flex gap-4">
+            <button
+              onClick={() => {
+                const jsonStr = JSON.stringify({ user, subjects, sessions, tasks }, null, 2);
+                const blob = new Blob([jsonStr], { type: 'application/json' });
+                const url = URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = `nightowl_backup_${new Date().toISOString().split('T')[0]}.json`;
+                a.click();
+              }}
+              className="px-4 py-2 bg-slate-800 hover:bg-slate-700 border border-slate-700 text-slate-200 rounded-xl text-xs font-semibold transition flex items-center gap-2"
+            >
+              <Download className="w-4 h-4" /> Export Data (JSON)
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  };
+
+  return (
+    <div className="min-h-screen bg-[#0b0f19] text-slate-100 flex flex-col md:flex-row font-sans selection:bg-indigo-500 selection:text-white">
+      {/* Sidebar Navigation for Desktop */}
+      <aside className="w-full md:w-64 bg-slate-950/90 border-r border-indigo-950/60 p-5 flex flex-col justify-between shrink-0">
+        <div>
+          {/* Logo Branding */}
+          <div className="flex items-center gap-3 mb-8 px-2">
+            <div className="p-2.5 bg-gradient-to-tr from-indigo-600 to-sky-500 rounded-2xl shadow-lg shadow-indigo-500/20">
+              <Moon className="w-6 h-6 text-white" />
+            </div>
+            <div>
+              <div className="font-extrabold text-base tracking-tight bg-gradient-to-r from-white via-indigo-200 to-sky-300 bg-clip-text text-transparent">
+                Night Owl
+              </div>
+              <div className="text-[10px] text-indigo-400/80 tracking-widest uppercase font-semibold">
+                Study Tracker
+              </div>
+            </div>
+          </div>
+
+          {/* Navigation Links */}
+          <nav className="space-y-1.5">
+            {[
+              { id: 'dashboard', label: 'Dashboard', icon: Sparkles },
+              { id: 'study', label: 'Study Arena', icon: Clock },
+              { id: 'tasks', label: 'To-Do Tasks', icon: CheckSquare },
+              { id: 'history', label: 'Logs & History', icon: Layers },
+              { id: 'reports', label: 'Analytics', icon: BarChart3 },
+              { id: 'calendar', label: 'Study Heatmap', icon: Calendar },
+              { id: 'settings', label: 'Settings', icon: Settings },
+            ].map(item => {
+              const Icon = item.icon;
+              const active = activeTab === item.id;
+              return (
+                <button
+                  key={item.id}
+                  onClick={() => setActiveTab(item.id)}
+                  className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-medium transition ${
+                    active 
+                      ? 'bg-gradient-to-r from-indigo-900/60 to-slate-900 text-sky-300 border border-indigo-700/50 shadow-md' 
+                      : 'text-slate-400 hover:text-white hover:bg-slate-900/50'
+                  }`}
+                >
+                  <Icon className={`w-4 h-4 ${active ? 'text-sky-400' : 'text-slate-500'}`} />
+                  {item.label}
+                </button>
+              );
+            })}
+          </nav>
+        </div>
+
+        <div className="pt-6 border-t border-slate-900 text-xs text-slate-600 px-2">
+          Night Owl v2.0 • Offline Ready
+        </div>
+      </aside>
+
+      {/* Main Workspace Area */}
+      <main className="flex-1 p-4 md:p-8 max-w-7xl mx-auto w-full pb-24 md:pb-8">
+        {renderHeader()}
+
+        {activeTab === 'dashboard' && renderDashboard()}
+        {activeTab === 'study' && renderStudyArena()}
+        {activeTab === 'tasks' && renderTasks()}
+        {activeTab === 'history' && renderHistory()}
+        {activeTab === 'reports' && renderReports()}
+        {activeTab === 'calendar' && renderCalendar()}
+        {activeTab === 'settings' && renderSettings()}
+      </main>
+
+      {/* Mobile Bottom Navigation Bar */}
+      <div className="md:hidden fixed bottom-0 left-0 right-0 bg-slate-950/95 border-t border-indigo-900/40 p-2 backdrop-blur-lg flex justify-around items-center z-40">
+        {[
+          { id: 'dashboard', label: 'Home', icon: Sparkles },
+          { id: 'study', label: 'Study', icon: Clock },
+          { id: 'tasks', label: 'Tasks', icon: CheckSquare },
+          { id: 'reports', label: 'Stats', icon: BarChart3 },
+          { id: 'settings', label: 'Config', icon: Settings },
+        ].map(item => {
+          const Icon = item.icon;
+          const active = activeTab === item.id;
+          return (
+            <button
+              key={item.id}
+              onClick={() => setActiveTab(item.id)}
+              className={`flex flex-col items-center gap-1 p-2 rounded-xl text-xs ${
+                active ? 'text-sky-400 font-bold' : 'text-slate-500'
+              }`}
+            >
+              <Icon className="w-5 h-5" />
+              <span>{item.label}</span>
+            </button>
+          );
+        })}
+      </div>
+
+      {/* MODAL: Timer Completion Session Dialog */}
+      {completionModal.open && (
+        <div className="fixed inset-0 bg-black/80 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+          <div className="bg-slate-900 border border-indigo-800/80 rounded-3xl p-6 max-w-md w-full shadow-2xl text-center space-y-4 animate-in fade-in zoom-in">
+            <div className="w-16 h-16 bg-gradient-to-tr from-indigo-600 to-sky-400 rounded-full mx-auto flex items-center justify-center shadow-lg">
+              <Sparkles className="w-8 h-8 text-white" />
+            </div>
+
+            <h3 className="text-2xl font-bold text-white">Session Complete! 🌙</h3>
+            <p className="text-sm text-slate-300">
+              Great focus! You completed <span className="text-sky-400 font-bold">{completionModal.summary?.durationMinutes} minutes</span> of <span className="text-indigo-300 font-bold">{completionModal.summary?.subjectName}</span>.
+            </p>
+
+            <button
+              onClick={confirmSaveTimerSession}
+              className="w-full py-3.5 bg-gradient-to-r from-indigo-600 to-sky-600 hover:from-indigo-500 hover:to-sky-500 text-white rounded-xl font-bold text-sm shadow-lg transition"
+            >
+              Save Session to Log
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* MODAL: Stopwatch Save Dialog */}
+      {saveModal.open && (
+        <div className="fixed inset-0 bg-black/80 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+          <div className="bg-slate-900 border border-indigo-800/80 rounded-3xl p-6 max-w-md w-full shadow-2xl space-y-4">
+            <h3 className="text-xl font-bold text-white">Save Stopwatch Session</h3>
+            <p className="text-xs text-slate-400">
+              Elapsed Time: {formatTimeSeconds(saveModal.durationSecs)} ({Math.max(1, Math.round(saveModal.durationSecs / 60))} mins)
+            </p>
+
+            <button
+              onClick={confirmSaveStopwatchSession}
+              className="w-full py-3 bg-indigo-600 hover:bg-indigo-500 text-white rounded-xl font-bold text-sm shadow transition"
+            >
+              Confirm & Save Log
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* MODAL: Add New Subject */}
+      {newSubjModal && (
+        <div className="fixed inset-0 bg-black/80 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+          <div className="bg-slate-900 border border-indigo-800/80 rounded-3xl p-6 max-w-md w-full shadow-2xl space-y-4">
+            <h3 className="text-xl font-bold text-white">Create Custom Subject</h3>
+            <div>
+              <label className="block text-xs text-slate-400 mb-1">Subject Name</label>
+              <input
+                type="text"
+                placeholder="e.g., Quantum Mechanics"
+                value={newSubjForm.name}
+                onChange={e => setNewSubjForm({ ...newSubjForm, name: e.target.value })}
+                className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-sm text-white"
+              />
+            </div>
+            <div className="flex gap-2 justify-end">
+              <button
+                onClick={() => setNewSubjModal(false)}
+                className="px-4 py-2 bg-slate-800 text-slate-300 rounded-xl text-xs font-semibold"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={() => {
+                  if (newSubjForm.name.trim()) {
+                    const created = {
+                      id: 'subj-' + Date.now(),
+                      name: newSubjForm.name.trim(),
+                      color: newSubjForm.color,
+                      icon: newSubjForm.icon || '📚'
+                    };
+                    setSubjects([...subjects, created]);
+                    setSelectedSubjectId(created.id);
+                    setNewSubjModal(false);
+                    setNewSubjForm({ name: '', color: '#6366f1', icon: '📖' });
+                  }
+                }}
+                className="px-4 py-2 bg-indigo-600 text-white rounded-xl text-xs font-semibold"
+              >
+                Add Subject
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* MODAL: Add New Task */}
+      {newTaskModal && (
+        <div className="fixed inset-0 bg-black/80 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+          <div className="bg-slate-900 border border-indigo-800/80 rounded-3xl p-6 max-w-md w-full shadow-2xl space-y-4">
+            <h3 className="text-xl font-bold text-white">Add New Study Task</h3>
+            <div>
+              <label className="block text-xs text-slate-400 mb-1">Task Description</label>
+              <input
+                type="text"
+                placeholder="e.g., Solve Chapter 3 Exercises"
+                value={newTaskForm.name}
+                onChange={e => setNewTaskForm({ ...newTaskForm, name: e.target.value })}
+                className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-sm text-white"
+              />
+            </div>
+
+            <div>
+              <label className="block text-xs text-slate-400 mb-1">Subject</label>
+              <select
+                value={newTaskForm.subjectId}
+                onChange={e => setNewTaskForm({ ...newTaskForm, subjectId: e.target.value })}
+                className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-sm text-white"
+              >
+                {subjects.map(s => (
+                  <option key={s.id} value={s.id}>{s.name}</option>
+                ))}
+              </select>
+            </div>
+
+            <div className="flex gap-2 justify-end">
+              <button
+                onClick={() => setNewTaskModal(false)}
+                className="px-4 py-2 bg-slate-800 text-slate-300 rounded-xl text-xs font-semibold"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={() => {
+                  if (newTaskForm.name.trim()) {
+                    const created = {
+                      id: 't-' + Date.now(),
+                      name: newTaskForm.name.trim(),
+                      subjectId: newTaskForm.subjectId,
+                      priority: newTaskForm.priority,
+                      completed: false,
+                      dueDate: newTaskForm.dueDate
+                    };
+                    setTasks([created, ...tasks]);
+                    setNewTaskModal(false);
+                    setNewTaskForm({ name: '', subjectId: subjects[0]?.id || '', priority: 'Medium', dueDate: new Date().toISOString().split('T')[0] });
+                  }
+                }}
+                className="px-4 py-2 bg-emerald-600 text-white rounded-xl text-xs font-semibold"
+              >
+                Save Task
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
